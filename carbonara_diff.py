@@ -8,8 +8,8 @@ class Proc:
         self.name = name
         self.program = program
         self.offset = offset
-    def __str__():
-        return "[%s : %x] :: 
+
+
 procs = []
 
 hashes1 = defaultdict(list)
@@ -40,181 +40,80 @@ def loadInfo(path):
         hashes7[d["hash7"]].append(proc_id)
         hashes8[d["full_hash"]].append(proc_id)
 
-
 def loadDB():
-    for path in os.listdir("./carbonara_diff_db")
-        loadInfo(path)
+    for path in os.listdir("./carbonara_diff_db"):
+        #print path
+        loadInfo(os.path.join("./carbonara_diff_db", path))
 
+
+def strMatch(d):
+    s = "["
+    for e in xrange(8):
+        if e in d.keys():
+            s += d[e]
+        else:
+            s += " "
+    s += "]"
+    return s
 
 def diff(path):
     fd = open(path)
     data = json.load(fd)
     fd.close()
 
-    for proc in data["procs"]:
+    for d in data["procs"]:
+        match = defaultdict(int)
+        match_arr = defaultdict(dict)
         
-        match = {}
-        if proc["hash1"] in hashes1:
-            for i in xrange(len(names)):
-                if hashes1[i] == proc["hash1"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(1)
-        if proc["hash2"] in hashes2:
-            for i in xrange(len(names)):
-                if hashes2[i] == proc["hash2"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(2)
-        if proc["hash3"] in hashes3:
-            for i in xrange(len(names)):
-                if hashes3[i] == proc["hash3"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(3)
-        if proc["hash4"] in hashes2:
-            for i in xrange(len(names)):
-                if hashes2[i] == proc["hash4"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(4)
-        if proc["hash5"] in hashes5:
-            for i in xrange(len(names)):
-                if hashes5[i] == proc["hash5"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(5)
-        if proc["hash6"] in hashes6:
-            for i in xrange(len(names)):
-                if hashes6[i] == proc["hash6"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(6)
-        if proc["hash7"] in hashes7:
-            for i in xrange(len(names)):
-                if hashes7[i] == proc["hash7"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(7)
-        if proc["full_hash"] in hashes8:
-            for i in xrange(len(names)):
-                if hashes8[i] == proc["full_hash"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(8)
+        for p_id in hashes1[d["hash1"]]:
+            match[p_id] += 1
+            match_arr[p_id][0] = '*'
+        for p_id in hashes2[d["hash2"]]:
+            match[p_id] += 2
+            match_arr[p_id][1] = '*'
+        for p_id in hashes3[d["hash3"]]:
+            match[p_id] += 3 * (len(d["raw"]) // 100 +1) #more significative with big functions
+            match_arr[p_id][2] = '*'
+        for p_id in hashes4[d["hash4"]]:
+            match[p_id] += 5 * (len(d["raw"]) // 100 +1)
+            match_arr[p_id][3] = '*'
+        for p_id in hashes5[d["hash5"]]:
+            match[p_id] += 10
+            match_arr[p_id][4] = '*'
+        for p_id in hashes6[d["hash6"]]:
+            match[p_id] += 8
+            match_arr[p_id][5] = '*'
+        for p_id in hashes7[d["hash7"]]:
+            match[p_id] += 10
+            match_arr[p_id][6] = '*'
+        for p_id in hashes8[d["full_hash"]]:
+            match[p_id] += 100
+            match_arr[p_id][7] = '*'
         
-
-
-
-
-
-
-
-
+        sr = sorted(match, key=match.get)
+        sr.reverse()
+        print "[0x%x] %s" % (d["offset"], d["name"])
+        i = 0
+        for p_id in sr:
+            if i >= 3:
+                break
+            print "        %s (%d) <%s :: 0x%x> %s" % (strMatch(match_arr[p_id]), match[p_id], procs[p_id].program, procs[p_id].offset, procs[p_id].name)
+            i += 1
+        print
 
 
 def main():
-    if len(sys.argv) < 3:
-        print "usage: python carbonara_diff.py data1.json data2.json\n"
+    if len(sys.argv) < 2:
+        print "usage: python carbonara_diff.py data.json\n"
         exit(1)
-    file1 = open(sys.argv[1])
-    file2 = open(sys.argv[2])
-    data1 = json.load(file1)
-    data2 = json.load(file2)
-    file1.close()
-    file2.close()
-    
-    file1 = open(program)
-    data1 = json.load(file1)
-    file1.close()
-    i = 0
-    for proc in data1["procs"]:
-        names.append(proc["name"])
-        #names_dict[i] = proc["name"]
-        hashes1.append(proc["hash1"])
-        hashes2.append(proc["hash2"])
-        hashes3.append(proc["hash3"])
-        hashes4.append(proc["hash4"])
-        hashes5.append(proc["hash5"])
-        hashes6.append(proc["hash6"])
-        hashes7.append(proc["hash7"])
-        hashes8.append(proc["full_hash"])
-        i += 1
-    
-    for proc in data2["procs"]:
-        
-        match = {}
-        if proc["hash1"] in hashes1:
-            for i in xrange(len(names)):
-                if hashes1[i] == proc["hash1"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(1)
-        if proc["hash2"] in hashes2:
-            for i in xrange(len(names)):
-                if hashes2[i] == proc["hash2"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(2)
-        if proc["hash3"] in hashes3:
-            for i in xrange(len(names)):
-                if hashes3[i] == proc["hash3"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(3)
-        if proc["hash4"] in hashes2:
-            for i in xrange(len(names)):
-                if hashes2[i] == proc["hash4"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(4)
-        if proc["hash5"] in hashes5:
-            for i in xrange(len(names)):
-                if hashes5[i] == proc["hash5"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(5)
-        if proc["hash6"] in hashes6:
-            for i in xrange(len(names)):
-                if hashes6[i] == proc["hash6"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(6)
-        if proc["hash7"] in hashes7:
-            for i in xrange(len(names)):
-                if hashes7[i] == proc["hash7"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(7)
-        if proc["full_hash"] in hashes8:
-            for i in xrange(len(names)):
-                if hashes8[i] == proc["full_hash"]:
-                    n = names[i]
-                    match[n] = match.get(n, [])
-                    match[n].append(8)
-                    #print proc["name"] + "  " + n
-                    
-        print "[[[ %s ]]]" % proc["name"]
-        mx = 0
-        nm = "NOT MATCH"
-        ma = {}
-        for m in match:
-            ma[m] = len(match[m])
-        a = sorted(ma, key=ma.get)
-
-        if len(a) > 0:
-            for m in ma:
-                if m == a[-1]:
-                    print "         %d :: %s" % (ma[m], m)
-        if len(a) > 1:
-            for m in ma:
-                if m == a[-2]:
-                    print "         %d :: %s" % (ma[m], m)
-        if len(a) > 2:
-            for m in ma:
-                if m == a[-3]:
-                    print "         %d :: %s" % (ma[m], m)
-        print
-        
+    loadDB()
+    diff(sys.argv[1])
+    #save to db
+    fd = open(sys.argv[1])
+    sv = open(os.path.join("./carbonara_diff_db", os.path.basename(sys.argv[1])), "w")
+    sv.write(fd.read())
+    sv.close()
+    fd.close()
+  
 main()
    
