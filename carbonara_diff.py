@@ -1,6 +1,7 @@
 import json
 import sys
 import os
+from datasketch import *
 from collections import defaultdict
 
 class Proc:
@@ -12,14 +13,13 @@ class Proc:
 
 procs = []
 
-hashes1 = defaultdict(list)
-hashes2 = defaultdict(list)
-hashes3 = defaultdict(list)
-hashes4 = defaultdict(list)
-hashes5 = defaultdict(list)
-hashes6 = defaultdict(list)
-hashes7 = defaultdict(list)
-hashes8 = defaultdict(list)
+vexhash = {}
+flowhash = {}
+#fullhash = defaultdict(list)
+
+
+forest = MinHashLSHForest(num_perm=64)
+forest_flow = MinHashLSHForest(num_perm=32)
 
 
 def loadInfo(path):
@@ -28,22 +28,39 @@ def loadInfo(path):
     fd.close()
     
     for d in data["procs"]:
+        off = d["offset"]
+        d = d["proc_desc"]
         proc_id = len(procs)
-        procs.append(Proc(d["name"], data["program"]["filename"], d["offset"]))
         
-        hashes1[d["hash1"]].append(proc_id)
-        hashes2[d["hash2"]].append(proc_id)
-        hashes3[d["hash3"]].append(proc_id)
-        hashes4[d["hash4"]].append(proc_id)
-        hashes5[d["hash5"]].append(proc_id)
-        hashes6[d["hash6"]].append(proc_id)
-        hashes7[d["hash7"]].append(proc_id)
-        hashes8[d["full_hash"]].append(proc_id)
+        procs.append(Proc(d["name"], data["info"]["filename"], off))
+        
+        mal = data["program"]["md5"]
+        
+        #fullhash[d["full_hash"]].append(proc_id)
+        
+        
+        lh = LeanMinHash.deserialize(d["vex_hash"].decode("hex"))
+        vexhash[proc_id] = lh
+        
+        lhf = LeanMinHash.deserialize(d["flow_hash"].decode("hex"))
+        flowhash[proc_id] = lhf
+        
+        forest.add(proc_id, lh)
+        forest_flow.add(proc_id, lhf)
+        
+
 
 def loadDB():
-    for path in os.listdir("./carbonara_diff_db"):
-        #print path
-        loadInfo(os.path.join("./carbonara_diff_db", path))
+    print "LOADING FILES FROM DISK..."
+    #print os.listdir("./carbonara_diff_db")
+    dirc = os.listdir("./carbonara_diff_db")
+    for i in xrange(len(dirc)):
+        if dirc[i].endswith(".json"):
+            #print dirc[i]
+            loadInfo(os.path.join("./carbonara_diff_db", dirc[i]))
+            sys.stdout.write("\r %d / %d" % (i, len(dirc)))
+            sys.stdout.flush()
+    print
 
 
 def strMatch(d):
@@ -60,47 +77,76 @@ def diff(path):
     fd = open(path)
     data = json.load(fd)
     fd.close()
-
+    
+    forest.index()
+    forest_flow.index()
+    
+    print "DIFF STARTED"
+    
+    import time
+    start = time.time()
+    
+    mal = data["program"]["md5"]
+    output = ""
+    
     for d in data["procs"]:
-        match = defaultdict(int)
-        match_arr = defaultdict(dict)
+        off = d["offset"]
+        d = d["proc_desc"]
         
-        for p_id in hashes1[d["hash1"]]:
-            match[p_id] += 1
-            match_arr[p_id][0] = '*'
-        for p_id in hashes2[d["hash2"]]:
-            match[p_id] += 2
-            match_arr[p_id][1] = '*'
-        for p_id in hashes3[d["hash3"]]:
-            match[p_id] += 3 * (len(d["raw"]) // 100 +1) #more significative with big functions
-            match_arr[p_id][2] = '*'
-        for p_id in hashes4[d["hash4"]]:
-            match[p_id] += 5 * (len(d["raw"]) // 100 +1)
-            match_arr[p_id][3] = '*'
-        for p_id in hashes5[d["hash5"]]:
-            match[p_id] += 10
-            match_arr[p_id][4] = '*'
-        for p_id in hashes6[d["hash6"]]:
-            match[p_id] += 8
-            match_arr[p_id][5] = '*'
-        for p_id in hashes7[d["hash7"]]:
-            match[p_id] += 10
-            match_arr[p_id][6] = '*'
-        for p_id in hashes8[d["full_hash"]]:
-            match[p_id] += 100
-            match_arr[p_id][7] = '*'
+        #if "Exec" not in d["name"]:
+        #    continue
         
-        sr = sorted(match, key=match.get)
-        sr.reverse()
-        print "[0x%x] %s" % (d["offset"], d["name"])
-        i = 0
-        for p_id in sr:
-            if i >= 3:
-                break
-            print "        %s (%d) <%s :: 0x%x> %s" % (strMatch(match_arr[p_id]), match[p_id], procs[p_id].program, procs[p_id].offset, procs[p_id].name)
-            i += 1
-        print
+        proc_id = len(procs)
+        
+        ll = len(d["raw"])
+        
+        procs.append(Proc(d["name"], data["info"]["filename"], off))
+        
+        lh = LeanMinHash.deserialize(d["vex_hash"].decode("hex"))
+        lhf = LeanMinHash.deserialize(d["flow_hash"].decode("hex"))
 
+        
+        try:
+            result = forest.query(lh, 12)
+            fls = forest_flow.query(lhf, 12)
+            
+            match = defaultdict(int)
+            
+            cc = {}
+            for r in result:
+                j = lh.jaccard(vexhash[r])
+                cc[r] = j
+                match[r] += j * 100
+            
+            pp = {}
+            for f in fls:
+                j = lhf.jaccard(flowhash[f])
+                pp[f] = j
+                #match[f] += j * (ll / 1000)
+                match[f] += (j ** 2) * (ll / 1000)
+            
+            output +=  "---- %s (%d bytes)----\n" % (d["name"], len(d["raw"]))
+            
+            sk = sorted(match, key=match.get, reverse=True)[:3]
+            for k in sk:
+                cj = match[k]
+                on = "   <" + procs[k].program +"> "+ procs[k].name
+                output += on + (100 - len(on))* " " + "   (" + str(int(cj)) + ")"
+                if k in cc:
+                    output += "\tVEX:" + str(cc[k])
+                if k in pp:
+                    output  += "\tFLOW:" + str(pp[k]) + ","+str((pp[k] ** 2) * (ll / 1000))
+                output += "\n"
+            output += "\n"
+            
+        except ValueError as ee:
+            print "ERR", ee
+            continue
+            
+    el = (time.time() - start)
+
+    print output
+    print "elapsed %d" % el
 
 def main():
     if len(sys.argv) < 2:
@@ -108,12 +154,7 @@ def main():
         exit(1)
     loadDB()
     diff(sys.argv[1])
-    #save to db
-    fd = open(sys.argv[1])
-    sv = open(os.path.join("./carbonara_diff_db", os.path.basename(sys.argv[1])), "w")
-    sv.write(fd.read())
-    sv.close()
-    fd.close()
+
   
 main()
    
